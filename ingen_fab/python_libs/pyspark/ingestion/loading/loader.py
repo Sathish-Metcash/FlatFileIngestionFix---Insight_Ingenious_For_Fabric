@@ -482,9 +482,9 @@ class FileLoader:
         if file_format == "csv":
             # Two-pass for CSV: infer schema without corrupt record options
             options = self._get_file_read_options()
+            infer_options["samplingRatio"] = 0.01 # REF: UPDATE #3For inferring schema read 1% of data instead of loading the entire file. can be overwritten by config.
             infer_options = {k: v for k, v in options.items() if k not in ["columnNameOfCorruptRecord", "mode"]}
-            #infer_options["inferSchema"] = True  # REF : Bug #2 Shouldn't hard code as it will convert values and data is corrupted, default reall all as String
-            infer_options["samplingRatio"] = 0.01 # REF: UPDATE #3For inferring schema read 1% of data instead of loading the entire file. 
+            #infer_options["inferSchema"] = True  # REF : Bug #2 Shouldn't hard code as it will convert values and data is corrupted, the default is read all col as string. config can overwrite.
             inferred = self.source_lakehouse_utils.read_file(
                 file_path=file_paths,
                 file_format=file_format,
