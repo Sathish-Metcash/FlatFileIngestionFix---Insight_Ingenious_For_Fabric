@@ -1,6 +1,18 @@
 # File Loading Framework - FileLoader
 # Manages all file operations for batch processing
+# 01-FEB-2026 - Fix bugs with Loader for Flat file ingestion
 
+# BUG #1 - _infer_schema function checks has_header as boolean before applying given schema. has_header is string , but it was checking as bool
+#           The actual functionality required is to use the schema if schema is given, NOT only if there is no header. Otherwise STG and Target Table are 
+#           have different schema and thus doesn't load into target. - Fix to apply schema if s
+
+# BUG #2  - Infer_schema is hardcoded, which is causing data to be transformed and creates data quality issue. Example a column wiht ID with values such as
+#            001, 002, 020 is loaded as 1, 2, 20 as it is hard configured to convert types and data is not usable- Fix the code to not hard_code infer_schema
+
+# Update #3  - Peformance issue with CSV as the code reads the whole file twice, Once to find columns and data type ( shouldn't if schema is proivided)
+#           and the second time to write to the STG lakehouse. Fix the code to sample 0.01 ( i.e. 1% of data to address performance)
+
+# Author : Sathish Senathi.
 import logging
 import os
 import re
@@ -471,7 +483,8 @@ class FileLoader:
             # Two-pass for CSV: infer schema without corrupt record options
             options = self._get_file_read_options()
             infer_options = {k: v for k, v in options.items() if k not in ["columnNameOfCorruptRecord", "mode"]}
-            infer_options["inferSchema"] = True
+            #infer_options["inferSchema"] = True  # REF : Bug #2 Shouldn't hard code as it will convert values and data is corrupted, default reall all as String
+            infer_options["samplingRatio"] = 0.01 # REF: UPDATE #3For inferring schema read 1% of data instead of loading the entire file. 
             inferred = self.source_lakehouse_utils.read_file(
                 file_path=file_paths,
                 file_format=file_format,
@@ -479,8 +492,9 @@ class FileLoader:
             ).schema
 
             # For headerless CSVs with target_schema_columns: rename _c0, _c1, etc. to target names
-            has_header = self.config.extract_file_format_params.format_options.get("has_header", True)
-            if self.config.target_schema_columns and not has_header:
+            has_header = self.config.extract_file_format_params.format_options.get("has_header", True) # has_header is string in config, here using at as bool
+            #if self.config.target_schema_columns and not has_header:  # FIX BUG #1 , Shouldn't be applying schema only if header is not , also header is stringtype
+            if self.config.target_schema_columns : 
                 target_names = [f.name for f in self.config.target_schema_columns.to_spark_schema().fields]
                 renamed_fields = []
                 for i, field in enumerate(inferred.fields):
